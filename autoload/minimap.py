@@ -17,6 +17,8 @@
 
 import os
 import sys
+import string
+import math
 PY3 = sys.version_info[0] == 3
 
 import vim
@@ -31,7 +33,7 @@ for p in vim.eval("&runtimepath").split(','):
 
 from drawille import *
 
-WIDTH = 20
+INITIAL_WIDTH = 20
 MINIMAP = "vim-minimap"
 
 def getmmwindow():
@@ -85,7 +87,7 @@ def showminimap():
 
         minimap = vim.current.window
 
-        minimap.width = WIDTH
+        minimap.width = INITIAL_WIDTH
 
         # fixed size
         vim.command(":set wfw")
@@ -99,7 +101,7 @@ def updateminimap():
     minimap = getmmwindow()
     src = vim.current.window
 
-    HORIZ_SCALE = 0.2
+    HORIZ_SCALE = 0.5
 
 
     if not hasattr(src, 'buffer'):
@@ -130,6 +132,7 @@ def updateminimap():
              updateminimap()
 
     if minimap and src.buffer != minimap.buffer:
+        width = minimap.width
 
         mode = vim.eval("mode()")
         cursor = src.cursor
@@ -138,53 +141,43 @@ def updateminimap():
         topline = src.cursor[0]
         vim.command("normal! L")
         bottomline = src.cursor[0]
+        tabstop_size = int(vim.eval("&tabstop"))
+        tabstop = ' ' * tabstop_size
 
-        def draw(lengths,indents, startline=0):
-
-            c = Canvas()
-
-            for y, l in enumerate(lengths):
-                indent = int(indents[y] * HORIZ_SCALE)
-                for x in range(2 * min(int(l * HORIZ_SCALE), WIDTH)):
-                    if(x>=indent):
-                        c.set(x, y)
-
-            # pad with spaces to ensure uniform block highlighting
-            if PY3:
-                return [line.ljust(WIDTH, u'\u00A0') for line in c.rows()]
-            else:
-                return [unicode(line).ljust(WIDTH, u'\u00A0') for line in c.rows()]
 
         if minimap:
-
             vim.current.window = minimap
             highlight_group = vim.eval("g:minimap_highlight")
-            lengths = []
-            indents = []
-
-            bufferlen = len(src.buffer)
-            more_on_top = 0
-            more_on_bottom = 0
-            if bufferlen > 160 + bottomline - topline:
-                if topline < 80:
-                    more_on_bottom = 80 - topline
-                if bottomline + 80 > bufferlen:
-                    more_on_top = bottomline + 80 - bufferlen
-            first = max(topline - 80 - more_on_top, 1)
-            last = min(bottomline + 80 + more_on_bottom, bufferlen)
-            for line in range(first, last):
-                linestring = src.buffer[line]
-                indents.append(len(linestring) - len(linestring.lstrip()))
-                lengths.append(len(linestring))
-
             vim.command(":setlocal modifiable")
 
-            minimap.buffer[:] = draw(lengths,indents)
+            def draw(src_buffer):
+                c = Canvas()
+
+                for y, s in enumerate(src_buffer):
+                    # Make sure to count tabs as multiple spaces
+                    linestring = string.replace(s, "\t", tabstop)
+
+                    linestring_len = len(linestring)
+                    linestring_lstrip_len = len(linestring.lstrip())
+                    length = int(math.ceil(linestring_len * HORIZ_SCALE))
+                    indent = int(math.ceil((linestring_len - linestring_lstrip_len) * HORIZ_SCALE))
+
+                    for x in range(min(length, width)):
+                        if(x >= indent):
+                            c.set(x, y)
+
+                # pad with spaces to ensure uniform block highlighting
+                if PY3:
+                    return [line.ljust(width, u'\u00A0') for line in c.rows()]
+                else:
+                    return [unicode(line).ljust(width, u'\u00A0') for line in c.rows()]
+
+            minimap.buffer[:] = draw(src.buffer)
             # Highlight the current visible zone
-            top = int((topline - first) / 4)
-            bottom = int((bottomline -first)/ 4 + 1)
+            top = int((topline - 1) / 4)
+            bottom = int((bottomline - 1)/ 4 + 1)
             vim.command("match {0} /\\%>0v\\%<{1}v\\%>{2}l\\%<{3}l./".format(
-                highlight_group, WIDTH + 1, top, bottom))
+                highlight_group, width + 1, top, bottom + 1))
 
             # center the highlighted zone
             height = int(vim.eval("winheight(0)"))
