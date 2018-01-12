@@ -133,6 +133,7 @@ def updateminimap():
 
     if minimap and src.buffer != minimap.buffer:
         width = minimap.width
+        scaled_width = int(math.ceil(width / float(HORIZ_SCALE)))
 
         mode = vim.eval("mode()")
         cursor = src.cursor
@@ -162,7 +163,7 @@ def updateminimap():
                     length = int(math.ceil(linestring_len * HORIZ_SCALE))
                     indent = int(math.ceil((linestring_len - linestring_lstrip_len) * HORIZ_SCALE))
 
-                    for x in range(min(length, width)):
+                    for x in range(min(length, scaled_width)):
                         if(x >= indent):
                             c.set(x, y)
 
